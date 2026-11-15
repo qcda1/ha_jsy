@@ -83,11 +83,11 @@ class JsySensor(JsyEntity, SensorEntity):
         super().__init__(coordinator, key)
         meta = PARAMETER_META.get(key)
         if meta is None:
-            self._attr_name = key
+            self._set_name("sensor", key, channel_of(key))
             return
 
         friendly_name, unit, dc_str, sc_str, icon, precision, diagnostic = meta
-        self._attr_name = self._channel_name(friendly_name, channel_of(key))
+        self._set_name("sensor", friendly_name, channel_of(key))
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = _DEVICE_CLASS_MAP.get(dc_str) if dc_str else None
         self._attr_state_class = _STATE_CLASS_MAP.get(sc_str) if sc_str else None

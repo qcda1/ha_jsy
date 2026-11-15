@@ -114,7 +114,19 @@ By default the entities are named after the registers: `Voltage 1`, `Power 2 (si
 
 Entities common to both channels (frequency, module information) keep their names.
 
-The entity ID is derived from the name when the entity is first created (`sensor.jsy_mk_194_10_heat_pump_voltage`). Naming a channel later, in the options, changes the displayed names but not the existing entity IDs, so history, dashboards and automations are unaffected. To get entity IDs that match, name the channels when the module is added, or rename the entity IDs in the entity settings.
+### Entity IDs
+
+The integration sets the entity IDs itself, so they do not depend on the area the device is placed in:
+
+| Entity | Displayed name | Entity ID |
+|---|---|---|
+| Named channel | `Heat pump Voltage` | `sensor.heat_pump_voltage` |
+| Channel without a name | `<device> Voltage 1` | `sensor.<device>_voltage_1` |
+| Common to both channels | `<device> Frequency` | `sensor.<device>_frequency` |
+
+Entities of a named channel do not carry the device name. A module often measures two unrelated circuits (a water heater and a refrigerator, say), so the channel name identifies them better than any device name would. The device name is then only used for the common entities and for the device page: a neutral name such as the default `JSY-MK-194 #10`, or the panel the module is installed in, works well.
+
+An entity that already exists keeps the ID stored in Home Assistant. Naming a channel later, in the options, changes the displayed names but not the existing entity IDs, so history, dashboards and automations are unaffected. To get entity IDs that match, name the channels when the module is added.
 
 ## Split-phase panels (120 / 240 V)
 
@@ -154,7 +166,7 @@ Entities are tied to the config entry, not to the port or the ID: they keep thei
 
 ## Created entities
 
-Entity names are prefixed with the device name, for example `sensor.jsy_mk_194_10_power_1_signed`. A sensor is created for each parameter selected in step 4; the tables below list everything that can be selected.
+See [Entity IDs](#entity-ids) for how entities are named. A sensor is created for each parameter selected in step 4; the tables below list everything that can be selected.
 
 ### Sensors
 
@@ -229,6 +241,7 @@ All serial accesses of the integration are serialised, so several modules never 
 | `entity.py`, `sensor.py`, `number.py`, `select.py`, `button.py` | Entities |
 | `diagnostics.py` | Diagnostics report |
 | `tools/jsy_simulator.py` | Fake module on a pseudo serial port, to test without hardware |
+| `docs/Notes_v110.md` | Release notes (French) |
 
 ## Register addressing
 

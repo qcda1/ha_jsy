@@ -6,6 +6,7 @@ import re
 
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
 
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import JsyCoordinator
@@ -23,17 +24,32 @@ class JsyEntity(CoordinatorEntity[JsyCoordinator]):
         # entities survive a port change or an ID change.
         self._attr_unique_id = f"{DOMAIN}_{coordinator.entry.entry_id}_{key}"
 
-    def _channel_name(self, name: str, channel: int | None) -> str:
-        """Put the user's channel name in an entity name.
+    def _set_name(self, domain: str, name: str, channel: int | None = None) -> None:
+        """Set the entity name and its entity ID.
 
-        "Power 1 (signed)" becomes "Heat pump Power (signed)" when channel 1
-        is named "Heat pump". Names are left alone when no name was given.
+        The entity ID is imposed here so that it never depends on the area the
+        device is placed in:
+
+        * channel WITH a user name ("Heat pump"): the entity stands on its own.
+          "Power 1 (signed)" becomes "Heat pump Power (signed)", with the ID
+          ``sensor.heat_pump_power_signed`` — no device name, because a module
+          often measures two unrelated circuits.
+        * otherwise: the usual "<device> <name>", with the ID
+          ``sensor.<device>_<name>``.
+
+        An entity that already exists keeps the ID stored in the registry.
         """
         custom = self.coordinator.channel_names.get(channel or 0, "")
-        if not custom:
-            return name
-        stripped = re.sub(rf"\s(?:Channel\s)?{channel}\b", "", name, count=1)
-        return f"{custom} {stripped}"
+        if custom:
+            stripped = re.sub(rf"\s(?:Channel\s)?{channel}\b", "", name, count=1)
+            self._attr_has_entity_name = False
+            self._attr_name = f"{custom} {stripped}"
+            self.entity_id = f"{domain}.{slugify(self._attr_name)}"
+        else:
+            self._attr_name = name
+            self.entity_id = (
+                f"{domain}.{slugify(self.coordinator.device_name)}_{slugify(name)}"
+            )
 
     @property
     def device_info(self) -> DeviceInfo:

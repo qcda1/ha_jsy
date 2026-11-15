@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "ha_jsy"
-VERSION = "0.2.0"
+VERSION = "1.1.0"
 
 MANUFACTURER = "Shenzhen Jiansiyan Technologies (JSY)"
 

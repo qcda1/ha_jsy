@@ -32,11 +32,11 @@ class JsyBaudRateSelect(JsyEntity, SelectEntity):
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:pencil-outline"
-    _attr_name = "Baud Rate (Set)"
     _attr_options = [str(baud) for baud in BAUD_RATE_CODES]
 
     def __init__(self, coordinator: JsyCoordinator) -> None:
         super().__init__(coordinator, "BaudRate_set")
+        self._set_name("select", "Baud Rate (Set)")
 
     @property
     def current_option(self) -> str | None:

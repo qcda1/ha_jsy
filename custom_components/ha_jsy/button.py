@@ -48,7 +48,7 @@ class JsyResetEnergyButton(JsyEntity, ButtonEntity):
         self, coordinator: JsyCoordinator, key: str, name: str, channel: int
     ) -> None:
         super().__init__(coordinator, key)
-        self._attr_name = self._channel_name(name, channel or None)
+        self._set_name("button", name, channel or None)
         self._channel = channel
 
     async def async_press(self) -> None:

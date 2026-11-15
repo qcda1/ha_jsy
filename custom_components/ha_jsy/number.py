@@ -71,8 +71,8 @@ class JsyEnergyNumber(JsyEntity, NumberEntity):
         super().__init__(coordinator, f"{key}_set")
         self._data_key = key
         channel = channel_of(key)
-        self._attr_name = self._channel_name(
-            f"{PARAMETER_META[key][0]}{_EDITABLE_SUFFIX}", channel
+        self._set_name(
+            "number", f"{PARAMETER_META[key][0]}{_EDITABLE_SUFFIX}", channel
         )
         # The value shown is the module counter x the circuit multiplier
         self._attr_native_max_value = (
@@ -102,7 +102,7 @@ class JsyDeviceIdNumber(JsyEntity, NumberEntity):
 
     def __init__(self, coordinator: JsyCoordinator) -> None:
         super().__init__(coordinator, "DeviceID_set")
-        self._attr_name = f"{PARAMETER_META['DeviceID'][0]}{_EDITABLE_SUFFIX}"
+        self._set_name("number", f"{PARAMETER_META['DeviceID'][0]}{_EDITABLE_SUFFIX}")
 
     @property
     def native_value(self) -> int | None:
