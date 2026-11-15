@@ -7,9 +7,10 @@ Marketplace de Home Assistant 2026.11.
 Base : v1.0.0 (première version publiée sur GitHub).
 
 `jsy_modbusdecoder.py` n'est pas modifié. Les nouveautés ont été validées dans
-Home Assistant 2026.2.3 contre le simulateur (`tools/jsy_simulator.py`) ; la
-lecture est validée sur un JSY-MK-194G réel, **les écritures de registres
-restent à confirmer sur le matériel** (voir la section 6).
+Home Assistant 2026.2.3 contre le simulateur (`tools/jsy_simulator.py`). Sur un
+JSY-MK-194G réel, la lecture, le changement d'ID Modbus et l'écriture des
+compteurs d'énergie sont validés ; **le changement de vitesse reste à
+confirmer** (voir la section 7).
 
 ---
 
@@ -90,14 +91,43 @@ Une entité déjà créée conserve l'identifiant enregistré dans Home Assistan
   `channel_2_name`, `channel_1_circuit`, `channel_2_circuit`. Une entrée créée
   en v1.0.0 fonctionne sans migration (aucun nom, ligne–neutre).
 
-## 5. Documentation
+## 5. Écritures : corrections issues des essais sur le matériel
+
+Constats sur un JSY-MK-194G réel :
+
+- une écriture au registre 0004H (ID / vitesse) s'applique immédiatement et
+  **n'est pas acquittée** par le module ;
+- après une écriture, le module reste **muet un court moment**.
+
+Corrections :
+
+- **Relecture après écriture.** L'intégration relisait le module 0,5 s après
+  l'écriture, sans réponse : toutes les entités passaient « indisponible »
+  jusqu'à la lecture suivante. Elle attend maintenant 1 s, relit, et recommence
+  jusqu'à cinq fois ; les entités conservent leur état entre-temps.
+- **Écriture à 0004H.** La trame est envoyée une seule fois, avec un délai
+  court, et l'absence d'acquittement n'est plus journalisée comme une erreur.
+  Le résultat est vérifié en interrogeant le module avec ses nouveaux réglages.
+- **Lecture périodique.** Une trame perdue ne rend plus les entités
+  indisponibles : la question est posée une seconde fois.
+- **Options.** L'ID et la vitesse de l'écran d'options indiquent les réglages
+  que le module a déjà ; ils n'y écrivent rien. Des réglages auxquels le module
+  ne répond pas sont maintenant refusés, avec un message qui renvoie aux
+  entités « Modbus Device ID (Set) » et « Baud Rate (Set) ». Auparavant,
+  l'intégration les acceptait et perdait le module.
+- **Nouvel outil `tools/jsy_write_test.py`** : essais d'écriture en trames
+  brutes sur un module réel, avec mesure du silence après écriture.
+- **Simulateur** : reproduit l'absence d'acquittement à 0004H et le silence
+  après écriture (`--deaf`).
+
+## 6. Documentation
 
 - Installation : section réécrite pour le **Marketplace** de Home Assistant
   2026.11 (Paramètres → Marketplace → *Add from link*), HACS conservé pour
   2026.10 et antérieures.
 - Nouvelles sections « Channel names » et « Split-phase panels (120 / 240 V) ».
 
-## 6. Mise à jour depuis la v1.0.0
+## 7. Mise à jour depuis la v1.0.0
 
 1. Mettre à jour l'intégration, puis redémarrer Home Assistant.
 2. Pour un canal sur un circuit 240 V : presser *Reset Energy* du canal, puis
@@ -109,20 +139,18 @@ Une entité déjà créée conserve l'identifiant enregistré dans Home Assistan
      suivent les nouveaux noms, l'historique repart de zéro. Le module conserve
      son ID Modbus, que l'intégration repropose à l'ajout.
 
-Toujours à confirmer sur le matériel :
-
-- l'application immédiate, ou après un cycle d'alimentation, d'un nouvel ID
-  Modbus ou d'une nouvelle vitesse ;
-- l'écriture d'un seul mot au registre 0004H ;
-- l'écriture d'une valeur non nulle dans un compteur d'énergie.
+Toujours à confirmer sur le matériel : le changement de vitesse par l'entité
+« Baud Rate (Set) ».
 
 ## Fichiers modifiés
 
 | Fichier | Changement |
 |---|---|
 | `const.py` | Clés de configuration des canaux, multiplicateurs, `channel_of()` |
-| `coordinator.py` | Correction ligne–ligne, conversion à l'écriture des énergies |
-| `config_flow.py` | Étape « Canaux », champs ajoutés aux options |
+| `coordinator.py` | Correction ligne–ligne, conversion à l'écriture des énergies, relecture après écriture |
+| `config_flow.py` | Étape « Canaux », champs ajoutés aux options, validation des réglages de connexion |
+| `jsy_reader.py`, `jsy_writer.py` | Sondes répétées, écriture à 0004H sans reprise |
+| `tools/` | `jsy_write_test.py` (nouveau), simulateur |
 | `entity.py` | Nom et identifiant des entités (`_set_name`) |
 | `sensor.py`, `number.py`, `select.py`, `button.py` | Utilisent `_set_name` |
 | `translations/en.json`, `fr.json` | Textes de l'étape et des options |

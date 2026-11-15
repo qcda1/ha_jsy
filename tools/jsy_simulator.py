@@ -19,9 +19,12 @@ It reproduces what was observed on a real JSY-MK-194G:
     and 000CH (clear both channels)
   * it only answers frames addressed to its own Modbus ID
 
-Assumptions (not verified on hardware): the new ID applies immediately after
-a write to 0004H and the acknowledgement still carries the old ID. Baud-rate
-changes are stored but meaningless on a pseudo terminal.
+It also reproduces two behaviours seen on the real module:
+  * a write to 0004H applies at once and is NOT acknowledged
+  * after any write the module stays silent for a moment (--deaf, default
+    0.8 s; the real duration can be measured with jsy_write_test.py)
+
+Baud-rate changes are stored but meaningless on a pseudo terminal.
 """
 
 import argparse
@@ -44,8 +47,10 @@ def crc16(data: bytes) -> bytes:
 
 
 class JsySimulator:
-    def __init__(self, device_id=1, baud_code=5):
+    def __init__(self, device_id=1, baud_code=5, deaf=0.8):
         self.device_id = device_id
+        self.deaf = deaf
+        self.deaf_until = 0.0
         self.baud_code = baud_code
         self.started = time.monotonic()
         # raw 32-bit energy counters (kWh x 10000)
@@ -82,6 +87,8 @@ class JsySimulator:
         unit, function = frame[0], frame[1]
         if unit != self.device_id:
             return None                     # not for us: stay silent
+        if time.monotonic() < self.deaf_until:
+            return None                     # busy after a write
         address, count = struct.unpack(">HH", frame[2:6])
 
         if function == 0x03:
@@ -104,6 +111,8 @@ class JsySimulator:
                     return self.exception(function, 0x83)
                 print(f"  ID {self.device_id} -> {new_id}, baud code {self.baud_code} -> {new_code}")
                 self.device_id, self.baud_code = new_id, new_code
+                self.deaf_until = time.monotonic() + self.deaf
+                return None                 # applied, but never acknowledged
             elif address in self.energy and count == 2 and nbytes == 4:
                 self.energy[address] = struct.unpack(">I", payload)[0]
                 print(f"  energy 0x{address:04X} = {self.energy[address] / 10000} kWh")
@@ -113,7 +122,8 @@ class JsySimulator:
                 print("  all energy counters cleared")
             else:
                 return self.exception(function)
-            return frame[:6]            # acknowledgement, still with the old ID
+            self.deaf_until = time.monotonic() + self.deaf
+            return frame[:6]            # acknowledgement
 
         return self.exception(function, 0x81)
 
@@ -133,6 +143,8 @@ def main():
     parser = argparse.ArgumentParser(description="JSY-MK-194 simulator")
     parser.add_argument("--id", type=int, default=1, help="Modbus ID (default 1)")
     parser.add_argument("--link", help="create this symlink to the pseudo port")
+    parser.add_argument("--deaf", type=float, default=0.8,
+                        help="seconds of silence after a write (default 0.8)")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
@@ -149,7 +161,7 @@ def main():
         os.symlink(port, args.link)
         port = args.link
 
-    sim = JsySimulator(device_id=args.id)
+    sim = JsySimulator(device_id=args.id, deaf=args.deaf)
     print(f"JSY simulator, Modbus ID {sim.device_id}, listening on {port}", flush=True)
 
     buf = b""

@@ -46,7 +46,15 @@ _LOGGER = logging.getLogger(__name__)
 ERROR_HISTORY_SIZE = 20
 
 #: Pause between a write to 0004H and the first request with the new settings.
-COMM_CHANGE_SETTLE = 0.5
+COMM_CHANGE_SETTLE = 1.0
+#: Probes made with the new, then the old settings after a write to 0004H.
+COMM_CHANGE_PROBES = 3
+
+#: The module does not answer for a short while after a write (observed on a
+#: JSY-MK-194G: a read 0.5 s after an energy write gets no answer). The value
+#: is read back after this pause, and again a few times if needed.
+WRITE_SETTLE = 1.0
+WRITE_READBACK_TRIES = 5
 
 
 def entry_unique_id(device_id: int) -> str:
@@ -291,8 +299,30 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(
                 f"{self.device_name}: {result.what} failed — {result.error}"
             )
-        await self.async_refresh()
+        await self._async_read_back()
         return result
+
+    async def _async_read_back(self) -> None:
+        """Read the module again after a write, waiting for it to answer.
+
+        The module is deaf for a moment after a write. Reading too early used
+        to mark every entity unavailable until the next poll; here the read
+        is repeated and the entities keep their state meanwhile.
+        """
+        for _ in range(WRITE_READBACK_TRIES):
+            await asyncio.sleep(WRITE_SETTLE)
+            try:
+                async with self._lock:
+                    data = await self.hass.async_add_executor_job(
+                        jsy_reader.read_device, self.port, self.baudrate, self.device_id
+                    )
+            except JsyConnectionError:
+                continue
+            self.last_success = dt_util.utcnow()
+            self.async_set_updated_data(self._apply_circuit_multipliers(data))
+            return
+        # Still silent: let the normal update report the failure.
+        await self.async_refresh()
 
     async def async_write_energy(self, key: str, kwh: float) -> WriteResult:
         """Set one energy counter.
@@ -319,10 +349,11 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> None:
         """Write register 0004H and follow the module to its new settings.
 
-        The write result alone is not trusted: depending on the firmware the
-        acknowledgement may come back with the new ID or at the new speed. The
-        module is therefore probed with the new settings, then with the old
-        ones, and the configuration follows whichever answers.
+        The write result is not used: the module applies the change at once
+        and does not acknowledge it with its old ID (observed on a
+        JSY-MK-194G). The module is therefore probed with the new settings,
+        then with the old ones, and the configuration follows whichever
+        answers.
         """
         new_device_id = self.device_id if new_device_id is None else int(new_device_id)
         new_baudrate = self.baudrate if new_baudrate is None else int(new_baudrate)
@@ -343,12 +374,14 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             await asyncio.sleep(COMM_CHANGE_SETTLE)
             new_ok = await self.hass.async_add_executor_job(
-                jsy_reader.probe_device, self.port, new_baudrate, new_device_id
+                jsy_reader.probe_device, self.port, new_baudrate, new_device_id,
+                jsy_reader.PROBE_TIMEOUT, COMM_CHANGE_PROBES,
             )
             old_ok = None
             if new_ok is None:
                 old_ok = await self.hass.async_add_executor_job(
-                    jsy_reader.probe_device, self.port, self.baudrate, self.device_id
+                    jsy_reader.probe_device, self.port, self.baudrate, self.device_id,
+                    jsy_reader.PROBE_TIMEOUT, COMM_CHANGE_PROBES,
                 )
 
         if new_ok is not None:
@@ -362,7 +395,7 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._save_entry(
                 **{CONF_DEVICE_ID: new_device_id, CONF_BAUDRATE: new_baudrate}
             )
-            await self.async_refresh()
+            await self._async_read_back()
             return
 
         if old_ok is not None:

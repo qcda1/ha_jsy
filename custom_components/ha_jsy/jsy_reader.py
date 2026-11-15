@@ -30,6 +30,8 @@ from .const import REG_ID_BAUD
 _LOGGER = logging.getLogger(__name__)
 
 PROBE_TIMEOUT = 0.5   # seconds — a JSY answers in ~100 ms at 4800 baud
+PROBE_RETRY_DELAY = 0.3
+READ_PROBE_ATTEMPTS = 2   # one lost frame must not make the entities unavailable
 BY_ID_DIR = "/dev/serial/by-id"
 
 
@@ -149,9 +151,31 @@ def open_client(port: str, baudrate: int, timeout: float, retries: int = 0):
 
 
 def probe_device(
-    port: str, baudrate: int, device_id: int, timeout: float = PROBE_TIMEOUT
+    port: str,
+    baudrate: int,
+    device_id: int,
+    timeout: float = PROBE_TIMEOUT,
+    attempts: int = 1,
 ) -> tuple[int, int] | None:
     """Ask register 0004H of module ``device_id`` on ``port``.
+
+    ``attempts`` > 1 repeats the question, for the cases where the module is
+    known to be there but may be momentarily deaf (it does not answer for a
+    short while after a write).
+    """
+    for attempt in range(max(1, attempts)):
+        if attempt:
+            time.sleep(PROBE_RETRY_DELAY)
+        answer = _probe_once(port, baudrate, device_id, timeout)
+        if answer is not None:
+            return answer
+    return None
+
+
+def _probe_once(
+    port: str, baudrate: int, device_id: int, timeout: float
+) -> tuple[int, int] | None:
+    """One request for register 0004H.
 
     Returns ``(device_id, baud_rate_code)`` as reported by the module, or
     ``None`` when nothing with that ID answers. A module with another ID
@@ -187,7 +211,9 @@ def probe_device(
                 pass
 
 
-def read_device(port: str, baudrate: int, device_id: int) -> dict[str, Any]:
+def read_device(
+    port: str, baudrate: int, device_id: int, attempts: int = READ_PROBE_ATTEMPTS
+) -> dict[str, Any]:
     """Read every register of one module through jsy_modbusdecoder.
 
     Raises:
@@ -202,7 +228,7 @@ def read_device(port: str, baudrate: int, device_id: int) -> dict[str, Any]:
             f"(or one of its imports failed: {exc})"
         ) from exc
 
-    if probe_device(port, baudrate, device_id) is None:
+    if probe_device(port, baudrate, device_id, attempts=attempts) is None:
         raise JsyConnectionError(
             f"no answer from Modbus ID {device_id} on {port} at {baudrate} baud"
         )

@@ -211,6 +211,8 @@ After a write the module is read again immediately, so the entities show the val
 
 When the ID or the baud rate is changed, the integration checks that the module answers with the new settings and updates its own configuration. If the module still answers with the old settings, nothing is changed and an error explains what to do.
 
+The ID and baud rate fields of the **options** screen are a different thing: they tell Home Assistant which settings the module already has, and write nothing to it. Settings the module does not answer to are refused there.
+
 ### Notes
 
 - Writing a smaller value to an energy counter is seen by Home Assistant as a meter reset, which the `total_increasing` statistics handle.
@@ -241,6 +243,7 @@ All serial accesses of the integration are serialised, so several modules never 
 | `entity.py`, `sensor.py`, `number.py`, `select.py`, `button.py` | Entities |
 | `diagnostics.py` | Diagnostics report |
 | `tools/jsy_simulator.py` | Fake module on a pseudo serial port, to test without hardware |
+| `tools/jsy_write_test.py` | Raw-frame write tests against a real module (energy, ID, baud rate) |
 | `docs/Notes_v110.md` | Release notes (French) |
 
 ## Register addressing
@@ -272,11 +275,13 @@ Diagnostics: Settings → Devices & Services → JSY-MK-194 → ⋮ → **Downlo
 
 ## Status of the write functions
 
-Reading has been validated on a real JSY-MK-194G. The write functions follow the manual and have been validated against the simulator only. To confirm on hardware:
+Validated on a real JSY-MK-194G:
 
-- whether a new Modbus ID or baud rate applies immediately or after a power cycle;
-- whether register 0004H accepts a single-word write;
-- presetting an energy counter to a non-zero value.
+- **Modbus ID** (register 0004H, single-word write): applies immediately. The module does not acknowledge this write, so the integration checks the result by questioning the module with its new ID.
+- **Energy counters**: zero and non-zero values are written and acknowledged.
+- After a write the module stays silent for a moment. The integration waits, then reads the value back, retrying a few times; the entities keep their state meanwhile.
+
+Still to confirm on hardware: the **baud rate** change. `tools/jsy_write_test.py` runs each of these tests with raw frames and measures the silence after a write.
 
 ## License
 

@@ -89,11 +89,11 @@
     "step": {
       "init": {
         "title": "Options JSY-MK-194",
-        "description": "Comment Home Assistant joint le module, et quelles valeurs sont exposées comme capteurs. Rien n'est écrit dans le module ici : pour changer son ID Modbus ou sa vitesse, utilisez les entités « Modbus Device ID (Set) » et « Baud Rate (Set) ». Les valeurs liées aux entités éditables sont toujours incluses.",
+        "description": "Comment Home Assistant joint le module, les canaux, et quelles valeurs sont exposées comme capteurs.\n\nLe port série, l'ID Modbus et la vitesse entrés ici doivent être ceux que le module a DÉJÀ : ils sont vérifiés auprès du module, et rien n'y est écrit. Pour changer l'ID Modbus ou la vitesse du module lui-même, utilisez les entités « Modbus Device ID (Set) » et « Baud Rate (Set) » sur la page de l'appareil.\n\nLes valeurs liées aux entités éditables sont toujours incluses dans les capteurs.",
         "data": {
           "port": "Port série",
-          "device_id": "ID Modbus du module",
-          "baudrate": "Vitesse (bauds)",
+          "device_id": "ID Modbus actuel du module",
+          "baudrate": "Vitesse actuelle du module (bauds)",
           "scan_interval": "Intervalle de lecture en secondes (2–3600)",
           "auto_relocate": "Chercher le module sur les autres ports lorsqu'il ne répond plus",
           "channel_1_name": "Nom du canal 1 (optionnel)",
@@ -140,7 +140,8 @@
       }
     },
     "error": {
-      "id_in_use": "Cet ID Modbus est déjà utilisé par un autre module JSY configuré."
+      "id_in_use": "Cet ID Modbus est déjà utilisé par un autre module JSY configuré.",
+      "cannot_connect": "Le module ne répond pas avec ces réglages, donc rien n'a été changé. Cet écran indique seulement à Home Assistant où se trouve le module. Pour changer l'ID Modbus ou la vitesse du module lui-même, utilisez les entités « Modbus Device ID (Set) » et « Baud Rate (Set) » sur la page de l'appareil."
     }
   },
   "selector": {

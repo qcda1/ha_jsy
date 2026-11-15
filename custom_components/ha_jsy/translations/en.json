@@ -89,11 +89,11 @@
     "step": {
       "init": {
         "title": "JSY-MK-194 options",
-        "description": "How Home Assistant reaches the module, and which values are exposed as sensors. Nothing is written to the module here: to change its Modbus ID or baud rate, use the \"Modbus Device ID (Set)\" and \"Baud Rate (Set)\" entities. The values behind the editable entities are always included.",
+        "description": "How Home Assistant reaches the module, the channels, and which values are exposed as sensors.\n\nThe serial port, Modbus ID and baud rate entered here must be the ones the module ALREADY has: they are checked against the module, and nothing is written to it. To change the module's own Modbus ID or baud rate, use the \"Modbus Device ID (Set)\" and \"Baud Rate (Set)\" entities on the device page.\n\nThe values behind the editable entities are always included in the sensors.",
         "data": {
           "port": "Serial port",
-          "device_id": "Modbus ID of the module",
-          "baudrate": "Baud rate",
+          "device_id": "Modbus ID the module currently has",
+          "baudrate": "Baud rate the module currently uses",
           "scan_interval": "Polling interval in seconds (2–3600)",
           "auto_relocate": "Look for the module on other ports when it stops answering",
           "channel_1_name": "Name of channel 1 (optional)",
@@ -140,7 +140,8 @@
       }
     },
     "error": {
-      "id_in_use": "This Modbus ID is already used by another configured JSY module."
+      "id_in_use": "This Modbus ID is already used by another configured JSY module.",
+      "cannot_connect": "The module does not answer with these settings, so nothing was changed. This screen only tells Home Assistant where the module is. To change the module's own Modbus ID or baud rate, use the \"Modbus Device ID (Set)\" and \"Baud Rate (Set)\" entities on the device page."
     }
   },
   "selector": {

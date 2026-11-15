@@ -45,6 +45,7 @@ _LOGGER = logging.getLogger(__name__)
 
 WRITE_TIMEOUT = 2.0
 WRITE_RETRIES = 1
+COMM_WRITE_TIMEOUT = 1.0
 
 # Error codes returned by the module (manual section 4.3)
 EXCEPTION_TEXT = {
@@ -71,11 +72,13 @@ def _write(
     address: int,
     values: list[int],
     what: str,
+    timeout: float = WRITE_TIMEOUT,
+    retries: int = WRITE_RETRIES,
 ) -> WriteResult:
     """Write ``values`` (16-bit words) at ``address`` with function code 10H."""
     client = None
     try:
-        client = open_client(port, baudrate, WRITE_TIMEOUT, WRITE_RETRIES)
+        client = open_client(port, baudrate, timeout, retries)
         if not client.connect():
             return WriteResult(False, what, values, f"unable to open {port}")
 
@@ -91,7 +94,9 @@ def _write(
 
     except Exception as err:  # noqa: BLE001
         error = f"{type(err).__name__}: {err}"
-        _LOGGER.error("%s — write at 0x%04X failed: %s", what, address, error)
+        # No acknowledgement is the normal outcome of a write to 0004H
+        level = logging.DEBUG if address == REG_ID_BAUD else logging.ERROR
+        _LOGGER.log(level, "%s — write at 0x%04X failed: %s", what, address, error)
         return WriteResult(False, what, values, error)
     finally:
         if client is not None:
@@ -171,7 +176,14 @@ def write_comm_settings(
     """Write register 0004H: new Modbus ID (high byte) and baud code (low byte).
 
     ``baudrate`` / ``device_id`` are the CURRENT settings, used to reach the
-    module. After a successful write the module answers with the new ones.
+    module. The new settings apply at once.
+
+    Observed on a JSY-MK-194G: the module does NOT acknowledge this write with
+    its old ID, so ``success`` is normally False here even though the change
+    took place. Callers must not rely on the result: they probe the module
+    with the new settings instead. The frame is sent once (no retry) with a
+    short timeout, since a second copy would be addressed to an ID that no
+    longer exists.
     """
     what = f"Modbus ID {device_id} -> {new_device_id}, {baudrate} -> {new_baudrate} baud"
     if not MIN_DEVICE_ID <= new_device_id <= MAX_DEVICE_ID:
@@ -181,4 +193,7 @@ def write_comm_settings(
         return WriteResult(False, what, [], f"unsupported baud rate {new_baudrate}")
 
     word = (new_device_id << 8) | code
-    return _write(port, baudrate, device_id, REG_ID_BAUD, [word], what)
+    return _write(
+        port, baudrate, device_id, REG_ID_BAUD, [word], what,
+        timeout=COMM_WRITE_TIMEOUT, retries=0,
+    )

@@ -61,7 +61,7 @@ from .const import (
     PARAMETER_META,
     WRITABLE_PARAMETER_KEYS,
 )
-from .coordinator import COMM_CHANGE_SETTLE, entry_unique_id
+from .coordinator import COMM_CHANGE_PROBES, COMM_CHANGE_SETTLE, entry_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -377,7 +377,8 @@ class JsyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             await asyncio.sleep(COMM_CHANGE_SETTLE)
             answer = await self.hass.async_add_executor_job(
-                jsy_reader.probe_device, self._port, self._baudrate, new_id
+                jsy_reader.probe_device, self._port, self._baudrate, new_id,
+                jsy_reader.PROBE_TIMEOUT, COMM_CHANGE_PROBES,
             )
         return answer is not None
 
@@ -427,8 +428,21 @@ class JsyOptionsFlowHandler(OptionsFlow):
                 for e in self.hass.config_entries.async_entries(DOMAIN)
                 if e.entry_id != entry.entry_id and CONF_DEVICE_ID in e.data
             }
+            baudrate = int(user_input[CONF_BAUDRATE])
+            connection_changed = (port, device_id, baudrate) != (
+                data[CONF_PORT],
+                int(data[CONF_DEVICE_ID]),
+                int(data.get(CONF_BAUDRATE, DEFAULT_BAUDRATE)),
+            )
             if device_id in others:
                 errors["base"] = "id_in_use"
+            elif connection_changed and not await self._async_module_answers(
+                port, baudrate, device_id
+            ):
+                # These fields only say where the module is. Refusing settings
+                # the module does not answer to keeps a typo, or an attempt to
+                # CHANGE the module's ID from here, from cutting the link.
+                errors["base"] = "cannot_connect"
             else:
                 info = await self.hass.async_add_executor_job(
                     jsy_reader.find_port_info, port
@@ -477,3 +491,13 @@ class JsyOptionsFlowHandler(OptionsFlow):
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
+
+    async def _async_module_answers(
+        self, port: str, baudrate: int, device_id: int
+    ) -> bool:
+        async with get_serial_lock(self.hass):
+            answer = await self.hass.async_add_executor_job(
+                jsy_reader.probe_device, port, baudrate, device_id,
+                jsy_reader.PROBE_TIMEOUT, COMM_CHANGE_PROBES,
+            )
+        return answer is not None
