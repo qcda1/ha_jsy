@@ -30,6 +30,7 @@ from .const import (
     MIN_DEVICE_ID,
     PARAMETER_META,
     WRITABLE_ENERGY_REGISTERS,
+    channel_of,
 )
 from .coordinator import JsyCoordinator
 from .entity import JsyEntity
@@ -64,13 +65,19 @@ class JsyEnergyNumber(JsyEntity, NumberEntity):
     _attr_device_class = NumberDeviceClass.ENERGY
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_native_min_value = 0
-    _attr_native_max_value = ENERGY_MAX_KWH
     _attr_native_step = 0.0001
 
     def __init__(self, coordinator: JsyCoordinator, key: str) -> None:
         super().__init__(coordinator, f"{key}_set")
         self._data_key = key
-        self._attr_name = f"{PARAMETER_META[key][0]}{_EDITABLE_SUFFIX}"
+        channel = channel_of(key)
+        self._attr_name = self._channel_name(
+            f"{PARAMETER_META[key][0]}{_EDITABLE_SUFFIX}", channel
+        )
+        # The value shown is the module counter x the circuit multiplier
+        self._attr_native_max_value = (
+            ENERGY_MAX_KWH * coordinator.channel_multipliers.get(channel or 0, 1)
+        )
 
     @property
     def native_value(self) -> float | None:

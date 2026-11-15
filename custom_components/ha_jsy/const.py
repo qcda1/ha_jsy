@@ -1,7 +1,9 @@
 """Constants for the JSY-MK-194 integration."""
 
+from __future__ import annotations
+
 DOMAIN = "ha_jsy"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 MANUFACTURER = "Shenzhen Jiansiyan Technologies (JSY)"
 
@@ -18,6 +20,11 @@ CONF_NAME = "name"
 CONF_USB_VID = "usb_vid"
 CONF_USB_PID = "usb_pid"
 CONF_AUTO_RELOCATE = "auto_relocate"
+CONF_MONITORED_PARAMETERS = "monitored_parameters"
+CONF_CH1_NAME = "channel_1_name"
+CONF_CH2_NAME = "channel_2_name"
+CONF_CH1_CIRCUIT = "channel_1_circuit"
+CONF_CH2_CIRCUIT = "channel_2_circuit"
 # Config flow only (never stored)
 CONF_NEW_DEVICE_ID = "new_device_id"
 
@@ -36,6 +43,61 @@ DEFAULT_AUTO_RELOCATE = True
 FIRST_ASSIGNED_ID = 10
 MIN_DEVICE_ID = 1
 MAX_DEVICE_ID = 255
+
+# Dictionary keys behind the editable entities (number / select). They are
+# always monitored so their current value is available as a sensor too.
+WRITABLE_PARAMETER_KEYS: list[str] = [
+    "EnergyPositive1",
+    "EnergyNegative1",
+    "EnergyPositive2",
+    "EnergyNegative2",
+    "DeviceID",
+    "BaudRate",
+]
+
+# Parameters pre-selected at installation
+DEFAULT_PARAMETERS: list[str] = [
+    "Voltage1",
+    "Current1",
+    "PowerSigned1",
+    "Voltage2",
+    "Current2",
+    "PowerSigned2",
+    *WRITABLE_PARAMETER_KEYS,
+]
+
+# --------------------------------------------------------------------------- #
+# Per-channel settings
+# --------------------------------------------------------------------------- #
+CHANNELS = (1, 2)
+CONF_CHANNEL_NAME = {1: CONF_CH1_NAME, 2: CONF_CH2_NAME}
+CONF_CHANNEL_CIRCUIT = {1: CONF_CH1_CIRCUIT, 2: CONF_CH2_CIRCUIT}
+
+# Circuit the current sensor (CT) of a channel is clamped on.
+#
+# The module has ONE voltage input and uses it for both channels. On a
+# split-phase panel (240 V between L1 and L2, 120 V from each to neutral) that
+# input is normally wired line-neutral, so the module computes
+# P = 120 V x I x PF. For a load fed line-to-line (240 V, no neutral current)
+# the real figures are twice that: voltage, power and energy are multiplied by
+# the factor below. Current and power factor are already right.
+CIRCUIT_LINE_NEUTRAL = "line_neutral"
+CIRCUIT_LINE_LINE = "line_line"
+DEFAULT_CIRCUIT = CIRCUIT_LINE_NEUTRAL
+CIRCUIT_MULTIPLIER: dict[str, int] = {
+    CIRCUIT_LINE_NEUTRAL: 1,
+    CIRCUIT_LINE_LINE: 2,
+}
+
+# Dictionary keys (without the channel digit) scaled by the circuit multiplier
+SCALED_CHANNEL_KEYS = (
+    "Voltage",
+    "Power",
+    "PowerSigned",
+    "EnergyPositive",
+    "EnergyNegative",
+    "EnergyNet",
+)
 
 # Manual Table 1 — low byte of register 0004H
 BAUD_RATE_CODES: dict[int, int] = {
@@ -71,7 +133,8 @@ ENERGY_MAX_KWH = 0xFFFFFFFF / ENERGY_SCALE  # 429496.7295 kWh
 #
 # precision  : digits shown by default in HA (None for text values)
 # diagnostic : True = shown under "Diagnostic" on the device page
-# Keys returned by the decoder but missing here still get a plain sensor.
+# Keys returned by the decoder but missing here can still be selected; they
+# get a plain sensor.
 # --------------------------------------------------------------------------- #
 PARAMETER_META: dict[str, tuple] = {
     # --- Channel 1 ---------------------------------------------------------
@@ -110,3 +173,14 @@ PARAMETER_META: dict[str, tuple] = {
     "BaudRate":            ("Baud Rate",              "Bd",  None,           None,               "mdi:speedometer",            None, True),
     "Port":                ("Serial Port",            None,  None,           None,               "mdi:usb-port",               None, True),
 }
+
+
+def channel_of(key: str) -> int | None:
+    """Channel (1 or 2) a dictionary key belongs to, None for common keys."""
+    if key.startswith("Model"):
+        return None
+    for channel in CHANNELS:
+        for suffix in ("", "Text", "_set"):
+            if key.endswith(f"{channel}{suffix}"):
+                return channel
+    return None

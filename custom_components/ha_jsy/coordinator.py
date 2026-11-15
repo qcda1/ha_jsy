@@ -18,8 +18,12 @@ from homeassistant.util import dt as dt_util
 from . import jsy_reader, jsy_writer
 from .const import (
     BAUD_RATE_CODES,
+    CHANNELS,
+    CIRCUIT_MULTIPLIER,
     CONF_AUTO_RELOCATE,
     CONF_BAUDRATE,
+    CONF_CHANNEL_CIRCUIT,
+    CONF_CHANNEL_NAME,
     CONF_DEVICE_ID,
     CONF_PORT,
     CONF_SCAN_INTERVAL,
@@ -27,8 +31,11 @@ from .const import (
     CONF_USB_VID,
     DEFAULT_AUTO_RELOCATE,
     DEFAULT_BAUDRATE,
+    DEFAULT_CIRCUIT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    SCALED_CHANNEL_KEYS,
+    channel_of,
 )
 from .jsy_reader import JsyConnectionError, JsyModuleNotFoundError
 from .jsy_writer import WriteResult
@@ -64,6 +71,16 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data.get(CONF_AUTO_RELOCATE, DEFAULT_AUTO_RELOCATE)
         )
         self.device_name: str = entry.title
+        # Per-channel settings: custom name ("" = none) and circuit multiplier
+        self.channel_names: dict[int, str] = {
+            n: str(data.get(CONF_CHANNEL_NAME[n], "") or "").strip() for n in CHANNELS
+        }
+        self.channel_multipliers: dict[int, int] = {
+            n: CIRCUIT_MULTIPLIER.get(
+                data.get(CONF_CHANNEL_CIRCUIT[n], DEFAULT_CIRCUIT), 1
+            )
+            for n in CHANNELS
+        }
         self._lock = serial_lock
         self._internal_update = False
 
@@ -135,6 +152,21 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         self.consecutive_errors = 0
         self.last_success = dt_util.utcnow()
+        return self._apply_circuit_multipliers(data)
+
+    def _apply_circuit_multipliers(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Scale voltage, power and energy of the channels on a 240 V circuit.
+
+        Done here, on the decoded dictionary, so jsy_modbusdecoder.py stays
+        untouched. See CIRCUIT_MULTIPLIER in const.py for the rationale.
+        """
+        for channel, factor in self.channel_multipliers.items():
+            if factor == 1:
+                continue
+            for base in SCALED_CHANNEL_KEYS:
+                key = f"{base}{channel}"
+                if isinstance(data.get(key), (int, float)):
+                    data[key] = round(data[key] * factor, 4)
         return data
 
     async def _async_relocate_and_read(self, first_error: str) -> dict[str, Any]:
@@ -226,6 +258,8 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "usb_vid": self.usb_vid,
             "usb_pid": self.usb_pid,
             "auto_relocate": self.auto_relocate,
+            "channel_names": self.channel_names,
+            "channel_multipliers": self.channel_multipliers,
             "scan_interval_s": (
                 self.update_interval.total_seconds() if self.update_interval else None
             ),
@@ -261,8 +295,13 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return result
 
     async def async_write_energy(self, key: str, kwh: float) -> WriteResult:
-        """Set one energy counter (kWh)."""
-        return await self._async_write(jsy_writer.write_energy, key, kwh)
+        """Set one energy counter.
+
+        ``kwh`` is the value as shown in HA; the module stores it divided by
+        the circuit multiplier of the channel.
+        """
+        factor = self.channel_multipliers.get(channel_of(key) or 0, 1)
+        return await self._async_write(jsy_writer.write_energy, key, kwh / factor)
 
     async def async_clear_energy(self, channel: int) -> WriteResult:
         """Zero the energy counters of channel 1, 2, or both (0)."""

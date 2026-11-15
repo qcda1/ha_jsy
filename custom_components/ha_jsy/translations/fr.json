@@ -22,6 +22,57 @@
         "data": {
           "new_device_id": "ID Modbus à assigner"
         }
+      },
+      "channels": {
+        "title": "Canaux",
+        "description": "Nommez chaque canal selon ce qu'il mesure, et indiquez sur quel circuit son capteur de courant est installé.\n\nLe module mesure une seule tension, normalement ligne–neutre, et l'utilise pour les deux canaux. Pour une charge alimentée ligne-à-ligne sur un panneau à phase auxiliaire (disjoncteur 240 V, sans neutre), choisissez « Ligne–ligne » : la tension, la puissance et l'énergie de ce canal sont multipliées par 2.",
+        "data": {
+          "channel_1_name": "Nom du canal 1 (optionnel)",
+          "channel_1_circuit": "Circuit mesuré par le canal 1",
+          "channel_2_name": "Nom du canal 2 (optionnel)",
+          "channel_2_circuit": "Circuit mesuré par le canal 2"
+        },
+        "data_description": {
+          "channel_1_name": "Utilisé dans le nom des entités, par exemple « Thermopompe Power (signed) » au lieu de « Power 1 (signed) ».",
+          "channel_1_circuit": "Remettez à zéro les compteurs d'énergie du canal avant de changer ce réglage, sinon les statistiques d'énergie enregistrent un saut."
+        }
+      },
+      "parameters": {
+        "title": "Sélection des paramètres — {device_name}",
+        "description": "Cochez les valeurs à exposer comme capteurs dans Home Assistant. Les valeurs pré-cochées sont celles recommandées. Les valeurs liées aux entités éditables (compteurs d'énergie, ID Modbus, vitesse) sont toujours incluses.",
+        "data": {
+          "Voltage1": "Tension 1",
+          "Current1": "Courant 1",
+          "Power1": "Puissance 1 (non signée)",
+          "PowerSigned1": "Puissance 1 (signée)",
+          "PowerFactor1": "Facteur de puissance 1",
+          "EnergyPositive1": "Énergie positive 1",
+          "EnergyNegative1": "Énergie négative 1",
+          "EnergyNet1": "Énergie nette 1",
+          "PowerDirection1": "Sens de la puissance 1 (brut)",
+          "PowerDirection1Text": "Sens de la puissance 1",
+          "Voltage2": "Tension 2",
+          "Current2": "Courant 2",
+          "Power2": "Puissance 2 (non signée)",
+          "PowerSigned2": "Puissance 2 (signée)",
+          "PowerFactor2": "Facteur de puissance 2",
+          "EnergyPositive2": "Énergie positive 2",
+          "EnergyNegative2": "Énergie négative 2",
+          "EnergyNet2": "Énergie nette 2",
+          "PowerDirection2": "Sens de la puissance 2 (brut)",
+          "PowerDirection2Text": "Sens de la puissance 2",
+          "Frequency": "Fréquence",
+          "Model1": "Modèle 1 (brut)",
+          "Model2": "Modèle 2 (brut)",
+          "Model1txt": "Modèle 1",
+          "Model2txt": "Modèle 2",
+          "VoltageRange": "Plage de tension",
+          "CurrentRange": "Plage de courant",
+          "DeviceID": "ID Modbus",
+          "BaudRateCode": "Code de vitesse",
+          "BaudRate": "Vitesse (bauds)",
+          "Port": "Port série"
+        }
       }
     },
     "error": {
@@ -38,21 +89,66 @@
     "step": {
       "init": {
         "title": "Options JSY-MK-194",
-        "description": "Comment Home Assistant joint le module. Rien n'est écrit dans le module ici : pour changer son ID Modbus ou sa vitesse, utilisez les entités « Modbus Device ID (Set) » et « Baud Rate (Set) ».",
+        "description": "Comment Home Assistant joint le module, et quelles valeurs sont exposées comme capteurs. Rien n'est écrit dans le module ici : pour changer son ID Modbus ou sa vitesse, utilisez les entités « Modbus Device ID (Set) » et « Baud Rate (Set) ». Les valeurs liées aux entités éditables sont toujours incluses.",
         "data": {
           "port": "Port série",
           "device_id": "ID Modbus du module",
           "baudrate": "Vitesse (bauds)",
           "scan_interval": "Intervalle de lecture en secondes (2–3600)",
-          "auto_relocate": "Chercher le module sur les autres ports lorsqu'il ne répond plus"
+          "auto_relocate": "Chercher le module sur les autres ports lorsqu'il ne répond plus",
+          "channel_1_name": "Nom du canal 1 (optionnel)",
+          "channel_1_circuit": "Circuit mesuré par le canal 1",
+          "channel_2_name": "Nom du canal 2 (optionnel)",
+          "channel_2_circuit": "Circuit mesuré par le canal 2",
+          "Voltage1": "Tension 1",
+          "Current1": "Courant 1",
+          "Power1": "Puissance 1 (non signée)",
+          "PowerSigned1": "Puissance 1 (signée)",
+          "PowerFactor1": "Facteur de puissance 1",
+          "EnergyPositive1": "Énergie positive 1",
+          "EnergyNegative1": "Énergie négative 1",
+          "EnergyNet1": "Énergie nette 1",
+          "PowerDirection1": "Sens de la puissance 1 (brut)",
+          "PowerDirection1Text": "Sens de la puissance 1",
+          "Voltage2": "Tension 2",
+          "Current2": "Courant 2",
+          "Power2": "Puissance 2 (non signée)",
+          "PowerSigned2": "Puissance 2 (signée)",
+          "PowerFactor2": "Facteur de puissance 2",
+          "EnergyPositive2": "Énergie positive 2",
+          "EnergyNegative2": "Énergie négative 2",
+          "EnergyNet2": "Énergie nette 2",
+          "PowerDirection2": "Sens de la puissance 2 (brut)",
+          "PowerDirection2Text": "Sens de la puissance 2",
+          "Frequency": "Fréquence",
+          "Model1": "Modèle 1 (brut)",
+          "Model2": "Modèle 2 (brut)",
+          "Model1txt": "Modèle 1",
+          "Model2txt": "Modèle 2",
+          "VoltageRange": "Plage de tension",
+          "CurrentRange": "Plage de courant",
+          "DeviceID": "ID Modbus",
+          "BaudRateCode": "Code de vitesse",
+          "BaudRate": "Vitesse (bauds)",
+          "Port": "Port série"
         },
         "data_description": {
-          "auto_relocate": "Seuls les adaptateurs du même modèle USB que celui sélectionné sont sondés."
+          "auto_relocate": "Seuls les adaptateurs du même modèle USB que celui sélectionné sont sondés.",
+          "channel_1_name": "Utilisé dans le nom des entités, par exemple « Thermopompe Power (signed) » au lieu de « Power 1 (signed) ».",
+          "channel_1_circuit": "Remettez à zéro les compteurs d'énergie du canal avant de changer ce réglage, sinon les statistiques d'énergie enregistrent un saut."
         }
       }
     },
     "error": {
       "id_in_use": "Cet ID Modbus est déjà utilisé par un autre module JSY configuré."
+    }
+  },
+  "selector": {
+    "circuit": {
+      "options": {
+        "line_neutral": "Ligne–neutre — valeurs telles que mesurées (ex. 120 V)",
+        "line_line": "Ligne–ligne, phase auxiliaire — tension, puissance et énergie ×2 (ex. 240 V)"
+      }
     }
   }
 }

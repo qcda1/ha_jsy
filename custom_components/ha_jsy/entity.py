@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -20,6 +22,18 @@ class JsyEntity(CoordinatorEntity[JsyCoordinator]):
         # Based on the config entry, not on the port or the Modbus ID, so the
         # entities survive a port change or an ID change.
         self._attr_unique_id = f"{DOMAIN}_{coordinator.entry.entry_id}_{key}"
+
+    def _channel_name(self, name: str, channel: int | None) -> str:
+        """Put the user's channel name in an entity name.
+
+        "Power 1 (signed)" becomes "Heat pump Power (signed)" when channel 1
+        is named "Heat pump". Names are left alone when no name was given.
+        """
+        custom = self.coordinator.channel_names.get(channel or 0, "")
+        if not custom:
+            return name
+        stripped = re.sub(rf"\s(?:Channel\s)?{channel}\b", "", name, count=1)
+        return f"{custom} {stripped}"
 
     @property
     def device_info(self) -> DeviceInfo:

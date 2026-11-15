@@ -1,11 +1,14 @@
 """Config flow for the JSY-MK-194 energy meter (ha_jsy).
 
-Adding a module is a two-step flow:
+Adding a module is a four-step flow:
 
-1. ``user``      — pick the serial port, give the module's CURRENT Modbus ID
-                   (1 on a new module) and baud rate. The module is probed.
-2. ``assign_id`` — choose the ID the module will keep. The flow proposes the
-                   next free one starting at 10 and writes it to the module.
+1. ``user``       — pick the serial port, give the module's CURRENT Modbus ID
+                    (1 on a new module) and baud rate. The module is read.
+2. ``assign_id``  — choose the ID the module will keep. The flow proposes the
+                    next free one starting at 10 and writes it to the module.
+3. ``channels``   — name each channel and say what circuit its current
+                    sensor is clamped on (line-neutral or line-line).
+4. ``parameters`` — tick the dictionary values to expose as sensors.
 
 The Modbus ID is then the identity of the module: it is the config entry's
 unique id, and it is what the coordinator looks for if the adapter shows up
@@ -27,19 +30,27 @@ from homeassistant.helpers import selector
 from . import get_serial_lock, jsy_reader, jsy_writer
 from .const import (
     BAUD_RATE_CODES,
+    CHANNELS,
+    CIRCUIT_MULTIPLIER,
     CONF_AUTO_RELOCATE,
     CONF_BAUDRATE,
+    CONF_CHANNEL_CIRCUIT,
+    CONF_CHANNEL_NAME,
     CONF_DEVICE_ID,
+    CONF_MONITORED_PARAMETERS,
     CONF_NAME,
     CONF_NEW_DEVICE_ID,
     CONF_PORT,
     CONF_SCAN_INTERVAL,
     CONF_USB_PID,
     CONF_USB_VID,
+    COORDINATOR,
     DEFAULT_AUTO_RELOCATE,
     DEFAULT_BAUDRATE,
+    DEFAULT_CIRCUIT,
     DEFAULT_DEVICE_ID,
     DEFAULT_NAME,
+    DEFAULT_PARAMETERS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     FIRST_ASSIGNED_ID,
@@ -47,6 +58,8 @@ from .const import (
     MAX_SCAN_INTERVAL,
     MIN_DEVICE_ID,
     MIN_SCAN_INTERVAL,
+    PARAMETER_META,
+    WRITABLE_PARAMETER_KEYS,
 )
 from .coordinator import COMM_CHANGE_SETTLE, entry_unique_id
 
@@ -100,6 +113,71 @@ def _interval_selector() -> Any:
     )
 
 
+def _channel_fields(current: dict[str, Any]) -> dict[vol.Marker, Any]:
+    """Name and circuit type of each channel."""
+    fields: dict[vol.Marker, Any] = {}
+    for n in CHANNELS:
+        name = str(current.get(CONF_CHANNEL_NAME[n], "") or "")
+        fields[
+            vol.Optional(
+                CONF_CHANNEL_NAME[n], description={"suggested_value": name}
+            )
+        ] = selector.TextSelector()
+        fields[
+            vol.Required(
+                CONF_CHANNEL_CIRCUIT[n],
+                default=current.get(CONF_CHANNEL_CIRCUIT[n], DEFAULT_CIRCUIT),
+            )
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=list(CIRCUIT_MULTIPLIER),
+                translation_key="circuit",
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+    return fields
+
+
+def _channel_settings(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Extract the per-channel settings from a submitted form."""
+    settings: dict[str, Any] = {}
+    for n in CHANNELS:
+        settings[CONF_CHANNEL_NAME[n]] = str(
+            user_input.get(CONF_CHANNEL_NAME[n], "") or ""
+        ).strip()
+        settings[CONF_CHANNEL_CIRCUIT[n]] = user_input.get(
+            CONF_CHANNEL_CIRCUIT[n], DEFAULT_CIRCUIT
+        )
+    return settings
+
+
+def _ensure_writable_keys(selected: list[str]) -> list[str]:
+    """Guarantee that the keys behind the editable entities stay monitored."""
+    for key in WRITABLE_PARAMETER_KEYS:
+        if key not in selected:
+            selected.append(key)
+    return selected
+
+
+def _available_parameters(data: dict[str, Any] | None) -> list[str]:
+    """Selectable keys: documented ones first, then any extra decoder key."""
+    if not data:
+        return list(PARAMETER_META)
+    params = [key for key in PARAMETER_META if key in data]
+    params.extend(key for key in data if key not in params)
+    return params
+
+
+def _parameter_fields(params: list[str], selected: list[str]) -> dict[vol.Marker, Any]:
+    """One checkbox per parameter; writable keys are always pre-ticked."""
+    return {
+        vol.Optional(
+            param, default=param in selected or param in WRITABLE_PARAMETER_KEYS
+        ): selector.BooleanSelector()
+        for param in params
+    }
+
+
 def _default_port(ports: list[jsy_reader.SerialPortInfo], used: set[str]) -> str:
     """First USB port not already used by a configured module."""
     for info in ports:
@@ -121,6 +199,8 @@ class JsyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._name: str = DEFAULT_NAME
         self._usb_vid: int | None = None
         self._usb_pid: int | None = None
+        self._available_params: list[str] = []
+        self._channels: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Helpers
@@ -163,9 +243,10 @@ class JsyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             try:
                 async with get_serial_lock(self.hass):
-                    await self.hass.async_add_executor_job(
+                    data = await self.hass.async_add_executor_job(
                         jsy_reader.read_device, port, baudrate, device_id
                     )
+                self._available_params = _available_parameters(data)
             except jsy_reader.JsyModuleNotFoundError:
                 errors["base"] = "module_not_found"
             except jsy_reader.JsyConnectionError as err:
@@ -218,21 +299,7 @@ class JsyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._device_id = new_id
                 await self.async_set_unique_id(entry_unique_id(new_id))
                 self._abort_if_unique_id_configured()
-                title = self._name
-                if title == DEFAULT_NAME:
-                    title = f"{DEFAULT_NAME} #{new_id}"
-                return self.async_create_entry(
-                    title=title,
-                    data={
-                        CONF_PORT: self._port,
-                        CONF_DEVICE_ID: new_id,
-                        CONF_BAUDRATE: self._baudrate,
-                        CONF_SCAN_INTERVAL: self._scan_interval,
-                        CONF_USB_VID: self._usb_vid,
-                        CONF_USB_PID: self._usb_pid,
-                        CONF_AUTO_RELOCATE: DEFAULT_AUTO_RELOCATE,
-                    },
-                )
+                return await self.async_step_channels()
 
         schema = vol.Schema(
             {
@@ -250,6 +317,55 @@ class JsyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "port": self._port,
                 "used_ids": ", ".join(str(i) for i in sorted(self._ids_in_use())) or "—",
             },
+        )
+
+    # ------------------------------------------------------------------
+    # Step 3 — channel names and circuit types
+    # ------------------------------------------------------------------
+    async def async_step_channels(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            self._channels = _channel_settings(user_input)
+            return await self.async_step_parameters()
+
+        return self.async_show_form(
+            step_id="channels", data_schema=vol.Schema(_channel_fields({}))
+        )
+
+    # ------------------------------------------------------------------
+    # Step 4 — select monitored parameters
+    # ------------------------------------------------------------------
+    async def async_step_parameters(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        title = self._name
+        if title == DEFAULT_NAME:
+            title = f"{DEFAULT_NAME} #{self._device_id}"
+
+        if user_input is not None:
+            selected = [p for p in self._available_params if user_input.get(p, False)]
+            return self.async_create_entry(
+                title=title,
+                data={
+                    CONF_PORT: self._port,
+                    CONF_DEVICE_ID: self._device_id,
+                    CONF_BAUDRATE: self._baudrate,
+                    CONF_SCAN_INTERVAL: self._scan_interval,
+                    CONF_USB_VID: self._usb_vid,
+                    CONF_USB_PID: self._usb_pid,
+                    CONF_AUTO_RELOCATE: DEFAULT_AUTO_RELOCATE,
+                    CONF_MONITORED_PARAMETERS: _ensure_writable_keys(selected),
+                    **self._channels,
+                },
+            )
+
+        return self.async_show_form(
+            step_id="parameters",
+            data_schema=vol.Schema(
+                _parameter_fields(self._available_params, DEFAULT_PARAMETERS)
+            ),
+            description_placeholders={"device_name": title},
         )
 
     async def _async_change_id(self, new_id: int) -> bool:
@@ -277,7 +393,7 @@ class JsyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class JsyOptionsFlowHandler(OptionsFlow):
-    """Options flow — tell the integration where the module is and how to poll.
+    """Options flow — where the module is, how to poll it, what to expose.
 
     Nothing is written to the module here: these fields describe how to reach
     it. To CHANGE the module's ID or baud rate, use the "Modbus ID (Set)" and
@@ -291,6 +407,15 @@ class JsyOptionsFlowHandler(OptionsFlow):
         entry = self.config_entry
         data = dict(entry.data)
         ports = await self.hass.async_add_executor_job(jsy_reader.list_serial_ports)
+
+        stored = self.hass.data.get(DOMAIN, {}).get(entry.entry_id) or {}
+        coordinator = stored.get(COORDINATOR)
+        available_params = _available_parameters(
+            coordinator.data if coordinator is not None else None
+        )
+        current_params: list[str] = data.get(
+            CONF_MONITORED_PARAMETERS, DEFAULT_PARAMETERS
+        )
 
         if user_input is not None:
             port = await self.hass.async_add_executor_job(
@@ -315,6 +440,10 @@ class JsyOptionsFlowHandler(OptionsFlow):
                         CONF_BAUDRATE: int(user_input[CONF_BAUDRATE]),
                         CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
                         CONF_AUTO_RELOCATE: bool(user_input[CONF_AUTO_RELOCATE]),
+                        CONF_MONITORED_PARAMETERS: _ensure_writable_keys(
+                            [p for p in available_params if user_input.get(p, False)]
+                        ),
+                        **_channel_settings(user_input),
                     }
                 )
                 if info is not None:
@@ -343,6 +472,8 @@ class JsyOptionsFlowHandler(OptionsFlow):
                     CONF_AUTO_RELOCATE,
                     default=bool(data.get(CONF_AUTO_RELOCATE, DEFAULT_AUTO_RELOCATE)),
                 ): selector.BooleanSelector(),
+                **_channel_fields(data),
+                **_parameter_fields(available_params, current_params),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

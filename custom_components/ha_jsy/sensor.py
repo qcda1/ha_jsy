@@ -1,4 +1,4 @@
-"""Sensor platform for ha_jsy — one sensor per key of the decoder dictionary."""
+"""Sensor platform for ha_jsy — one sensor per monitored dictionary key."""
 
 from __future__ import annotations
 
@@ -13,9 +13,17 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import COORDINATOR, DOMAIN, PARAMETER_META
+from .const import (
+    CONF_MONITORED_PARAMETERS,
+    COORDINATOR,
+    DEFAULT_PARAMETERS,
+    DOMAIN,
+    PARAMETER_META,
+    channel_of,
+)
 from .coordinator import JsyCoordinator
 from .entity import JsyEntity
 
@@ -42,19 +50,30 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Create a sensor for every value returned by jsy_modbusdecoder."""
+    """Create a sensor for every monitored key of the decoder dictionary."""
     coordinator: JsyCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
 
-    # Documented keys first (in PARAMETER_META order), then anything else the
-    # decoder returns, so a key added to jsy_modbusdecoder.py shows up in HA
-    # without touching the integration.
-    keys = list(PARAMETER_META)
-    for key in coordinator.data or {}:
-        if key not in PARAMETER_META:
-            _LOGGER.info("Key %s has no PARAMETER_META entry — plain sensor", key)
-            keys.append(key)
+    monitored: list[str] = entry.data.get(
+        CONF_MONITORED_PARAMETERS, DEFAULT_PARAMETERS
+    )
 
-    async_add_entities(JsySensor(coordinator, key) for key in keys)
+    entities: list[JsySensor] = []
+    for key in monitored:
+        if coordinator.data and key not in coordinator.data:
+            _LOGGER.warning("Parameter %s not in JSY data — skipping", key)
+            continue
+        entities.append(JsySensor(coordinator, key))
+
+    # Sensors that were un-ticked in the options are removed from the entity
+    # registry instead of lingering as "unavailable". Their statistics stay in
+    # the recorder and are picked up again if the parameter is re-selected.
+    wanted = {entity.unique_id for entity in entities}
+    registry = er.async_get(hass)
+    for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if reg_entry.domain == "sensor" and reg_entry.unique_id not in wanted:
+            registry.async_remove(reg_entry.entity_id)
+
+    async_add_entities(entities)
 
 
 class JsySensor(JsyEntity, SensorEntity):
@@ -68,7 +87,7 @@ class JsySensor(JsyEntity, SensorEntity):
             return
 
         friendly_name, unit, dc_str, sc_str, icon, precision, diagnostic = meta
-        self._attr_name = friendly_name
+        self._attr_name = self._channel_name(friendly_name, channel_of(key))
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = _DEVICE_CLASS_MAP.get(dc_str) if dc_str else None
         self._attr_state_class = _STATE_CLASS_MAP.get(sc_str) if sc_str else None

@@ -7,20 +7,22 @@
 ## Features
 
 - Periodic polling of every register of the module (voltage, current, power, power factor, energy in both directions, frequency, for both channels)
-- Every value of the `jsy_modbusdecoder.py` dictionary is exposed as a sensor
+- Every value of the `jsy_modbusdecoder.py` dictionary is available; select which ones to expose as HA entities via the UI
 - Configurable polling interval from **2 to 3,600 seconds**
 - Read/write registers can be changed from HA: the four energy counters, the Modbus ID and the baud rate
 - Buttons to reset the energy counters, per channel or all at once
 - Multi-module support, one USB/TTL adapter per module
+- Each channel can be named after what it measures (`Heat pump`, `Furnace`) and the name is used in its entities
+- Split-phase support: a channel on a 240 V line-to-line circuit gets its voltage, power and energy corrected
 - Each module is identified by its **Modbus ID**, so a module keeps its entities even if `/dev/ttyUSB0` and `/dev/ttyUSB1` are swapped after a reboot
-- Options flow (⚙️ icon) to change the port, ID, baud rate and interval without reconfiguring
+- Options flow (⚙️ icon) to change the port, ID, baud rate, interval and monitored parameters without reconfiguring
 - Downloadable diagnostics report
 
 ## Requirements
 
 | Component | Description |
 |---|---|
-| Home Assistant | 2026.2 or later |
+| Home Assistant | 2026.2 or later (tested on 2026.2 and used on 2026.11) |
 | Module | JSY-MK-194T / JSY-MK-194G (TTL interface) |
 | Adapter | One USB/TTL adapter per module (tested with an FT232R), plugged into the Home Assistant host |
 | Python packages | `pymodbus` and `pyserial`, installed automatically by Home Assistant |
@@ -29,21 +31,29 @@ The module's TTL interface is point to point: each module needs its own adapter.
 
 ## Installation
 
-### 1 - Install HACS (if not already done)
+### Home Assistant 2026.11 or later — Marketplace
 
-See <https://hacs.xyz/docs/use/>.
+Since Home Assistant 2026.11, HACS is built into Home Assistant as the **Marketplace** (Settings → Marketplace). Nothing has to be installed first.
 
-### 2 - Add the repository as a Custom repository
+1. Go to **Settings → Marketplace**. On first use, accept the community-content notice.
+2. Select **Add from link** in the upper-right corner.
+3. Under **GitHub link**, enter `https://github.com/qcda1/ha_jsy` (or `qcda1/ha_jsy`) and select **Add**. Home Assistant asks you to connect your GitHub account the first time you add a custom repository. If the content type is not detected, choose **Integration** under **Type** and select **Add** again.
+4. Open **JSY-MK-194 Energy Meter**, select **Install**, confirm the version and select **Install** again.
+5. If a restart is requested, use the repair under **Settings → System → Repairs**.
+6. Go to **Settings → Devices & Services → Add integration** and search for **JSY-MK-194 Energy Meter**.
 
-HACS → ⋮ → **Custom repositories** → Repository `https://github.com/qcda1/ha_jsy`, Type **Integration** → **Add**.
+Updates then appear under **Settings → Updates**. Updating the integration requires a restart of Home Assistant.
 
-### 3 - Add the integration through HACS
+### Home Assistant 2026.10 or earlier — HACS
 
-Search for **JSY-MK-194 Energy Meter** in HACS, download it, then restart Home Assistant.
+1. Install HACS if not already done (<https://hacs.xyz/docs/use/>).
+2. HACS → ⋮ → **Custom repositories** → Repository `https://github.com/qcda1/ha_jsy`, Type **Integration** → **Add**.
+3. Search for **JSY-MK-194 Energy Meter** in HACS, download it, then restart Home Assistant.
+4. Settings → Devices & Services → **Add integration** → **JSY-MK-194 Energy Meter**.
 
-### Manual installation (without HACS)
+### Manual installation
 
-Copy the `custom_components/ha_jsy` folder into the `custom_components` folder of your Home Assistant configuration, then restart Home Assistant.
+Copy the `custom_components/ha_jsy` folder into the `custom_components` folder of your Home Assistant configuration, restart Home Assistant, then add the integration from Settings → Devices & Services.
 
 ```
 config/
@@ -54,10 +64,6 @@ config/
         ├── jsy_modbusdecoder.py
         └── ...
 ```
-
-### 4 - Add the integration
-
-Settings → Devices & Services → **Add integration** → **JSY-MK-194 Energy Meter**.
 
 ## Configuration
 
@@ -79,6 +85,60 @@ The integration proposes the ID the module will keep: **10** for the first modul
 
 Keeping the factory ID (1) free means a new module can always be added without clashing with one that is already configured.
 
+### Step 3 — Channels
+
+| Field | Description |
+|---|---|
+| Name of channel 1 / 2 | Optional. What the channel measures, for example `Heat pump` or `Furnace`. Used in the entity names |
+| Circuit measured by channel 1 / 2 | **Line–neutral** (values as measured) or **Line–line, split-phase** (voltage, power and energy ×2). See [Split-phase panels](#split-phase-panels-120--240-v) |
+
+### Step 4 — Monitored parameters
+
+Tick the values to expose as sensors. Pre-selected:
+
+- `Voltage1`, `Current1`, `PowerSigned1`, `Voltage2`, `Current2`, `PowerSigned2`
+- the read/write registers: `EnergyPositive1`, `EnergyNegative1`, `EnergyPositive2`, `EnergyNegative2`, `DeviceID`, `BaudRate`
+
+The read/write registers are always included, even if un-ticked, because the editable entities rely on them. The selection can be changed later in the options.
+
+## Channel names
+
+By default the entities are named after the registers: `Voltage 1`, `Power 2 (signed)`, and so on. When a channel has a name, it replaces the channel number:
+
+| Without a name | Channel 1 named `Heat pump` |
+|---|---|
+| Voltage 1 | Heat pump Voltage |
+| Power 1 (signed) | Heat pump Power (signed) |
+| Energy Positive 1 (Set) | Heat pump Energy Positive (Set) |
+| Reset Energy Channel 1 | Heat pump Reset Energy |
+
+Entities common to both channels (frequency, module information) keep their names.
+
+The entity ID is derived from the name when the entity is first created (`sensor.jsy_mk_194_10_heat_pump_voltage`). Naming a channel later, in the options, changes the displayed names but not the existing entity IDs, so history, dashboards and automations are unaffected. To get entity IDs that match, name the channels when the module is added, or rename the entity IDs in the entity settings.
+
+## Split-phase panels (120 / 240 V)
+
+The module has **one** voltage input, shared by both channels. On a North American split-phase panel there are 240 V between L1 and L2 and 120 V from each to neutral, and the voltage input is normally wired line–neutral (120 V).
+
+For a load on a single-pole breaker (120 V) this is exactly right. For a load on a double-pole breaker fed line-to-line (240 V with no neutral: furnace, heat pump, water heater), the current sensor sees the full load current but the module multiplies it by 120 V instead of 240 V. Power and energy come out at **half** their real value.
+
+Set the circuit of the channel to **Line–line, split-phase** to correct this. For that channel:
+
+| Value | Correction |
+|---|---|
+| Voltage | ×2 |
+| Power, Power (signed) | ×2 |
+| Energy Positive, Negative, Net | ×2 |
+| Current, Power Factor | unchanged |
+
+The correction is applied to the decoded dictionary, per channel; the module's own counters are not modified. The *(Set)* energy entities take and show corrected values and convert them when writing.
+
+Notes:
+
+- The correction assumes a pure 240 V load. If part of the load returns through the neutral (a 120 V control circuit, for example), that part is over-counted.
+- `Voltage Range` (module information) stays as reported by the module.
+- **Reset the energy counters of the channel before changing the circuit type** (*Reset Energy* button). Otherwise the energy sensors double at once and Home Assistant's statistics record the jump as consumption.
+
 ## How a module is identified
 
 Linux names USB serial ports in the order they are detected, so `/dev/ttyUSB0` and `/dev/ttyUSB1` can be swapped after a reboot. The integration protects against this in two ways:
@@ -94,7 +154,7 @@ Entities are tied to the config entry, not to the port or the ID: they keep thei
 
 ## Created entities
 
-Entity names are prefixed with the device name, for example `sensor.jsy_mk_194_10_power_1`.
+Entity names are prefixed with the device name, for example `sensor.jsy_mk_194_10_power_1_signed`. A sensor is created for each parameter selected in step 4; the tables below list everything that can be selected.
 
 ### Sensors
 
@@ -117,7 +177,7 @@ The energy sensors use the `energy` device class and can be used in the Energy d
 
 `Model 1`, `Model 2` (`Model1txt`, `Model2txt`), `Model 1 (raw)`, `Model 2 (raw)`, `Voltage Range`, `Current Range`, `Modbus Device ID`, `Baud Rate`, `Baud Rate Code`, `Power Direction 1 / 2 (raw)`, `Serial Port`.
 
-A key added later to `jsy_modbusdecoder.py` appears automatically as a plain sensor.
+A key added later to `jsy_modbusdecoder.py` appears automatically in the selection list and gets a plain sensor.
 
 ## Read/write registers
 
@@ -147,7 +207,9 @@ When the ID or the baud rate is changed, the integration checks that the module 
 
 ## Options
 
-Settings → Devices & Services → JSY-MK-194 → ⚙️. The options describe **how Home Assistant reaches the module** (port, Modbus ID, baud rate, polling interval, search on other ports). Nothing is written to the module from this screen. Use it, for instance, after replacing an adapter or after changing the module's settings with another tool.
+Settings → Devices & Services → JSY-MK-194 → ⚙️. The options describe **how Home Assistant reaches the module** (port, Modbus ID, baud rate, polling interval, search on other ports), the **channel names and circuit types**, and **which parameters are monitored**. Nothing is written to the module from this screen. Use it, for instance, after replacing an adapter or after changing the module's settings with another tool.
+
+A sensor whose parameter is un-ticked is removed from Home Assistant. Its long-term statistics are kept and are picked up again if the parameter is re-selected.
 
 ## Multiple modules
 

@@ -22,6 +22,57 @@
         "data": {
           "new_device_id": "Modbus ID to assign"
         }
+      },
+      "channels": {
+        "title": "Channels",
+        "description": "Name each channel after what it measures, and say what circuit its current sensor is clamped on.\n\nThe module measures a single voltage, normally line–neutral, and uses it for both channels. For a load fed line-to-line on a split-phase panel (240 V breaker, no neutral), choose \"Line–line\": voltage, power and energy of that channel are multiplied by 2.",
+        "data": {
+          "channel_1_name": "Name of channel 1 (optional)",
+          "channel_1_circuit": "Circuit measured by channel 1",
+          "channel_2_name": "Name of channel 2 (optional)",
+          "channel_2_circuit": "Circuit measured by channel 2"
+        },
+        "data_description": {
+          "channel_1_name": "Used in the entity names, for example \"Heat pump Power (signed)\" instead of \"Power 1 (signed)\".",
+          "channel_1_circuit": "Reset the energy counters of the channel before changing this setting, otherwise the energy statistics record a jump."
+        }
+      },
+      "parameters": {
+        "title": "Parameter selection — {device_name}",
+        "description": "Tick the values to expose as sensors in Home Assistant. The pre-ticked ones are the recommended set. The values behind the editable entities (energy counters, Modbus ID, baud rate) are always included.",
+        "data": {
+          "Voltage1": "Voltage 1",
+          "Current1": "Current 1",
+          "Power1": "Power 1 (unsigned)",
+          "PowerSigned1": "Power 1 (signed)",
+          "PowerFactor1": "Power Factor 1",
+          "EnergyPositive1": "Energy Positive 1",
+          "EnergyNegative1": "Energy Negative 1",
+          "EnergyNet1": "Energy Net 1",
+          "PowerDirection1": "Power Direction 1 (raw)",
+          "PowerDirection1Text": "Power Direction 1",
+          "Voltage2": "Voltage 2",
+          "Current2": "Current 2",
+          "Power2": "Power 2 (unsigned)",
+          "PowerSigned2": "Power 2 (signed)",
+          "PowerFactor2": "Power Factor 2",
+          "EnergyPositive2": "Energy Positive 2",
+          "EnergyNegative2": "Energy Negative 2",
+          "EnergyNet2": "Energy Net 2",
+          "PowerDirection2": "Power Direction 2 (raw)",
+          "PowerDirection2Text": "Power Direction 2",
+          "Frequency": "Frequency",
+          "Model1": "Model 1 (raw)",
+          "Model2": "Model 2 (raw)",
+          "Model1txt": "Model 1",
+          "Model2txt": "Model 2",
+          "VoltageRange": "Voltage Range",
+          "CurrentRange": "Current Range",
+          "DeviceID": "Modbus Device ID",
+          "BaudRateCode": "Baud Rate Code",
+          "BaudRate": "Baud Rate",
+          "Port": "Serial Port"
+        }
       }
     },
     "error": {
@@ -38,21 +89,66 @@
     "step": {
       "init": {
         "title": "JSY-MK-194 options",
-        "description": "How Home Assistant reaches the module. Nothing is written to the module here: to change its Modbus ID or baud rate, use the \"Modbus Device ID (Set)\" and \"Baud Rate (Set)\" entities.",
+        "description": "How Home Assistant reaches the module, and which values are exposed as sensors. Nothing is written to the module here: to change its Modbus ID or baud rate, use the \"Modbus Device ID (Set)\" and \"Baud Rate (Set)\" entities. The values behind the editable entities are always included.",
         "data": {
           "port": "Serial port",
           "device_id": "Modbus ID of the module",
           "baudrate": "Baud rate",
           "scan_interval": "Polling interval in seconds (2–3600)",
-          "auto_relocate": "Look for the module on other ports when it stops answering"
+          "auto_relocate": "Look for the module on other ports when it stops answering",
+          "channel_1_name": "Name of channel 1 (optional)",
+          "channel_1_circuit": "Circuit measured by channel 1",
+          "channel_2_name": "Name of channel 2 (optional)",
+          "channel_2_circuit": "Circuit measured by channel 2",
+          "Voltage1": "Voltage 1",
+          "Current1": "Current 1",
+          "Power1": "Power 1 (unsigned)",
+          "PowerSigned1": "Power 1 (signed)",
+          "PowerFactor1": "Power Factor 1",
+          "EnergyPositive1": "Energy Positive 1",
+          "EnergyNegative1": "Energy Negative 1",
+          "EnergyNet1": "Energy Net 1",
+          "PowerDirection1": "Power Direction 1 (raw)",
+          "PowerDirection1Text": "Power Direction 1",
+          "Voltage2": "Voltage 2",
+          "Current2": "Current 2",
+          "Power2": "Power 2 (unsigned)",
+          "PowerSigned2": "Power 2 (signed)",
+          "PowerFactor2": "Power Factor 2",
+          "EnergyPositive2": "Energy Positive 2",
+          "EnergyNegative2": "Energy Negative 2",
+          "EnergyNet2": "Energy Net 2",
+          "PowerDirection2": "Power Direction 2 (raw)",
+          "PowerDirection2Text": "Power Direction 2",
+          "Frequency": "Frequency",
+          "Model1": "Model 1 (raw)",
+          "Model2": "Model 2 (raw)",
+          "Model1txt": "Model 1",
+          "Model2txt": "Model 2",
+          "VoltageRange": "Voltage Range",
+          "CurrentRange": "Current Range",
+          "DeviceID": "Modbus Device ID",
+          "BaudRateCode": "Baud Rate Code",
+          "BaudRate": "Baud Rate",
+          "Port": "Serial Port"
         },
         "data_description": {
-          "auto_relocate": "Only adapters of the same USB model as the one selected are probed."
+          "auto_relocate": "Only adapters of the same USB model as the one selected are probed.",
+          "channel_1_name": "Used in the entity names, for example \"Heat pump Power (signed)\" instead of \"Power 1 (signed)\".",
+          "channel_1_circuit": "Reset the energy counters of the channel before changing this setting, otherwise the energy statistics record a jump."
         }
       }
     },
     "error": {
       "id_in_use": "This Modbus ID is already used by another configured JSY module."
+    }
+  },
+  "selector": {
+    "circuit": {
+      "options": {
+        "line_neutral": "Line–neutral — values as measured (e.g. 120 V)",
+        "line_line": "Line–line, split-phase — voltage, power and energy ×2 (e.g. 240 V)"
+      }
     }
   }
 }

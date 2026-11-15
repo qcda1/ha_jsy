@@ -1,7 +1,7 @@
 {
   "domain": "ha_jsy",
   "name": "JSY-MK-194 Energy Meter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "codeowners": ["@qcda1"],
   "config_flow": true,
   "issue_tracker": "https://github.com/qcda1/ha_jsy/issues",
