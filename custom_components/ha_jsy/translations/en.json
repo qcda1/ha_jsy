@@ -1,0 +1,58 @@
+{
+  "title": "JSY-MK-194 Energy Meter",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect a JSY-MK-194 module",
+        "description": "Choose the serial port of the USB/TTL adapter and enter the module's CURRENT Modbus settings. A new module ships with ID 1 at 4800 baud. The integration reads the module to validate the connection.",
+        "data": {
+          "port": "Serial port",
+          "device_id": "Current Modbus ID of the module (1 on a new module)",
+          "baudrate": "Baud rate",
+          "scan_interval": "Polling interval in seconds (2–3600)",
+          "name": "Device name in Home Assistant"
+        },
+        "data_description": {
+          "port": "Ports are listed by their stable name (/dev/serial/by-id/...) when the system provides one. You can also type a path."
+        }
+      },
+      "assign_id": {
+        "title": "Modbus ID of the module",
+        "description": "The module answered on {port} with Modbus ID {current_id}.\n\nChoose the ID it will keep. This ID identifies the module: if its adapter comes back under another port name after a reboot, the integration finds the module by this ID. The suggested value is the next free one, starting at 10. If it differs from the current ID, it is written to the module now.\n\nIDs already used by configured modules: {used_ids}",
+        "data": {
+          "new_device_id": "Modbus ID to assign"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No answer from the module. Check the port, the Modbus ID, the baud rate and the wiring (TX/RX crossed, module powered).",
+      "module_not_found": "jsy_modbusdecoder.py is missing from custom_components/ha_jsy/ or one of its imports failed (see the log).",
+      "id_in_use": "This Modbus ID is already used by another configured JSY module.",
+      "id_write_failed": "The new ID was written but the module does not answer with it. It may need a power cycle; power-cycle it and start again with the new ID as the current ID."
+    },
+    "abort": {
+      "already_configured": "A JSY module with this Modbus ID is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "JSY-MK-194 options",
+        "description": "How Home Assistant reaches the module. Nothing is written to the module here: to change its Modbus ID or baud rate, use the \"Modbus Device ID (Set)\" and \"Baud Rate (Set)\" entities.",
+        "data": {
+          "port": "Serial port",
+          "device_id": "Modbus ID of the module",
+          "baudrate": "Baud rate",
+          "scan_interval": "Polling interval in seconds (2–3600)",
+          "auto_relocate": "Look for the module on other ports when it stops answering"
+        },
+        "data_description": {
+          "auto_relocate": "Only adapters of the same USB model as the one selected are probed."
+        }
+      }
+    },
+    "error": {
+      "id_in_use": "This Modbus ID is already used by another configured JSY module."
+    }
+  }
+}
