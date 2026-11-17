@@ -46,14 +46,15 @@ _LOGGER = logging.getLogger(__name__)
 ERROR_HISTORY_SIZE = 20
 
 #: Pause between a write to 0004H and the first request with the new settings.
-COMM_CHANGE_SETTLE = 1.0
+#: Measured on a JSY-MK-194G: the module answers ~0.2 s after the write.
+COMM_CHANGE_SETTLE = 0.3
 #: Probes made with the new, then the old settings after a write to 0004H.
 COMM_CHANGE_PROBES = 3
 
-#: The module does not answer for a short while after a write (observed on a
-#: JSY-MK-194G: a read 0.5 s after an energy write gets no answer). The value
-#: is read back after this pause, and again a few times if needed.
-WRITE_SETTLE = 1.0
+#: After a write the value is read back. jsy_writer already pauses after each
+#: write (POST_WRITE_PAUSE), so the first read is immediate; if the module
+#: does not answer, the read is repeated after this delay.
+WRITE_SETTLE = 0.5
 WRITE_READBACK_TRIES = 5
 
 
@@ -305,12 +306,13 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_read_back(self) -> None:
         """Read the module again after a write, waiting for it to answer.
 
-        The module is deaf for a moment after a write. Reading too early used
-        to mark every entity unavailable until the next poll; here the read
-        is repeated and the entities keep their state meanwhile.
+        The module ignores a request that follows a write too closely. Reading
+        too early used to mark every entity unavailable until the next poll;
+        here the read is repeated and the entities keep their state meanwhile.
         """
-        for _ in range(WRITE_READBACK_TRIES):
-            await asyncio.sleep(WRITE_SETTLE)
+        for attempt in range(WRITE_READBACK_TRIES):
+            if attempt:
+                await asyncio.sleep(WRITE_SETTLE)
             try:
                 async with self._lock:
                     data = await self.hass.async_add_executor_job(
@@ -350,10 +352,10 @@ class JsyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Write register 0004H and follow the module to its new settings.
 
         The write result is not used: the module applies the change at once
-        and does not acknowledge it with its old ID (observed on a
-        JSY-MK-194G). The module is therefore probed with the new settings,
-        then with the old ones, and the configuration follows whichever
-        answers.
+        and, when the ID changes, acknowledges with its NEW ID, which pymodbus
+        discards (measured on a JSY-MK-194G). The module is therefore probed
+        with the new settings, then with the old ones, and the configuration
+        follows whichever answers.
         """
         new_device_id = self.device_id if new_device_id is None else int(new_device_id)
         new_baudrate = self.baudrate if new_baudrate is None else int(new_baudrate)

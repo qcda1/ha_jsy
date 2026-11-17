@@ -2,7 +2,8 @@
 
 Energy counters (004BH, 004DH, 0053H, 0055H)
     "Energy Positive 1 (Set)" ... let you preset a counter, e.g. to line the
-    module up with a utility meter. Writing 0 clears it.
+    module up with a utility meter. Writing 0 clears it. The module stores a
+    written value in steps of 0.01 kWh.
 
 Modbus ID (0004H, high byte)
     "Modbus ID (Set)" changes the ID stored in the module. The integration
@@ -26,6 +27,7 @@ from .const import (
     COORDINATOR,
     DOMAIN,
     ENERGY_MAX_KWH,
+    ENERGY_WRITE_STEP_KWH,
     MAX_DEVICE_ID,
     MIN_DEVICE_ID,
     PARAMETER_META,
@@ -65,7 +67,6 @@ class JsyEnergyNumber(JsyEntity, NumberEntity):
     _attr_device_class = NumberDeviceClass.ENERGY
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_native_min_value = 0
-    _attr_native_step = 0.0001
 
     def __init__(self, coordinator: JsyCoordinator, key: str) -> None:
         super().__init__(coordinator, f"{key}_set")
@@ -74,10 +75,11 @@ class JsyEnergyNumber(JsyEntity, NumberEntity):
         self._set_name(
             "number", f"{PARAMETER_META[key][0]}{_EDITABLE_SUFFIX}", channel
         )
-        # The value shown is the module counter x the circuit multiplier
-        self._attr_native_max_value = (
-            ENERGY_MAX_KWH * coordinator.channel_multipliers.get(channel or 0, 1)
-        )
+        # The value shown is the module counter x the circuit multiplier.
+        # The module stores a written counter in steps of 0.01 kWh.
+        factor = coordinator.channel_multipliers.get(channel or 0, 1)
+        self._attr_native_max_value = ENERGY_MAX_KWH * factor
+        self._attr_native_step = ENERGY_WRITE_STEP_KWH * factor
 
     @property
     def native_value(self) -> float | None:

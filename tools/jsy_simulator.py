@@ -19,10 +19,11 @@ It reproduces what was observed on a real JSY-MK-194G:
     and 000CH (clear both channels)
   * it only answers frames addressed to its own Modbus ID
 
-It also reproduces two behaviours seen on the real module:
-  * a write to 0004H applies at once and is NOT acknowledged
-  * after any write the module stays silent for a moment (--deaf, default
-    0.8 s; the real duration can be measured with jsy_write_test.py)
+It also reproduces what was measured on the real module:
+  * a write to 0004H applies at once; the acknowledgement carries the NEW ID
+  * a written energy counter is truncated to 0.01 kWh
+  * a request that follows a write too closely is ignored (--deaf, default
+    0.15 s)
 
 Baud-rate changes are stored but meaningless on a pseudo terminal.
 """
@@ -47,7 +48,7 @@ def crc16(data: bytes) -> bytes:
 
 
 class JsySimulator:
-    def __init__(self, device_id=1, baud_code=5, deaf=0.8):
+    def __init__(self, device_id=1, baud_code=5, deaf=0.15):
         self.device_id = device_id
         self.deaf = deaf
         self.deaf_until = 0.0
@@ -111,10 +112,10 @@ class JsySimulator:
                     return self.exception(function, 0x83)
                 print(f"  ID {self.device_id} -> {new_id}, baud code {self.baud_code} -> {new_code}")
                 self.device_id, self.baud_code = new_id, new_code
-                self.deaf_until = time.monotonic() + self.deaf
-                return None                 # applied, but never acknowledged
+                return bytes([new_id]) + frame[1:6]   # ack carries the NEW ID
             elif address in self.energy and count == 2 and nbytes == 4:
-                self.energy[address] = struct.unpack(">I", payload)[0]
+                raw = struct.unpack(">I", payload)[0]
+                self.energy[address] = raw - raw % 100     # 0.01 kWh steps
                 print(f"  energy 0x{address:04X} = {self.energy[address] / 10000} kWh")
             elif address == 0x000C and count == 2 and nbytes == 4:
                 for key in self.energy:
@@ -143,8 +144,8 @@ def main():
     parser = argparse.ArgumentParser(description="JSY-MK-194 simulator")
     parser.add_argument("--id", type=int, default=1, help="Modbus ID (default 1)")
     parser.add_argument("--link", help="create this symlink to the pseudo port")
-    parser.add_argument("--deaf", type=float, default=0.8,
-                        help="seconds of silence after a write (default 0.8)")
+    parser.add_argument("--deaf", type=float, default=0.15,
+                        help="seconds of silence after a write (default 0.15)")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 

@@ -197,7 +197,7 @@ These are the registers the manual documents as writable. The editable entities 
 
 | Entity | Register | Effect |
 |---|---|---|
-| Energy Positive 1 (Set) | 004BH | Presets the counter, in kWh |
+| Energy Positive 1 (Set) | 004BH | Presets the counter, in kWh (steps of 0.01 kWh) |
 | Energy Negative 1 (Set) | 004DH | Presets the counter, in kWh |
 | Energy Positive 2 (Set) | 0053H | Presets the counter, in kWh |
 | Energy Negative 2 (Set) | 0055H | Presets the counter, in kWh |
@@ -244,7 +244,7 @@ All serial accesses of the integration are serialised, so several modules never 
 | `diagnostics.py` | Diagnostics report |
 | `tools/jsy_simulator.py` | Fake module on a pseudo serial port, to test without hardware |
 | `tools/jsy_write_test.py` | Raw-frame write tests against a real module (energy, ID, baud rate) |
-| `docs/Notes_v110.md` | Release notes (French) |
+| `docs/Notes_v110.md`, `docs/Notes_v111.md` | Release notes (French) |
 
 ## Register addressing
 
@@ -277,11 +277,13 @@ Diagnostics: Settings → Devices & Services → JSY-MK-194 → ⋮ → **Downlo
 
 Validated on a real JSY-MK-194G:
 
-- **Modbus ID** (register 0004H, single-word write): applies immediately. The module does not acknowledge this write, so the integration checks the result by questioning the module with its new ID.
-- **Energy counters**: zero and non-zero values are written and acknowledged.
-- After a write the module stays silent for a moment. The integration waits, then reads the value back, retrying a few times; the entities keep their state meanwhile.
+- **Modbus ID** (register 0004H, single-word write): applies immediately. The module acknowledges with its **new** ID, which a Modbus client discards as a reply from another device, so the integration checks the result by questioning the module with its new ID.
+- **Baud rate** (same register): applies immediately. The module acknowledges at the old speed, then switches.
+- In both cases the module answers with its new settings about 0.2 s after the write.
+- **Energy counters**: zero and non-zero values are written and acknowledged. The module stores a written value in steps of **0.01 kWh** and drops the rest, although it then counts and reads back in steps of 0.001 kWh. The *(Set)* entities use that 0.01 kWh step.
+- The module ignores a request that follows a write too closely; it answers again within 0.2 s. The integration pauses 0.3 s after each write, then reads the value back, retrying if needed; the entities keep their state meanwhile.
 
-Still to confirm on hardware: the **baud rate** change. `tools/jsy_write_test.py` runs each of these tests with raw frames and measures the silence after a write.
+`tools/jsy_write_test.py` runs each of these tests with raw frames.
 
 ## License
 

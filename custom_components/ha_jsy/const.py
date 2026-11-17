@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "ha_jsy"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 MANUFACTURER = "Shenzhen Jiansiyan Technologies (JSY)"
 
@@ -124,6 +124,11 @@ WRITABLE_ENERGY_REGISTERS: dict[str, int] = {
     "EnergyNegative2": 0x0055,
 }
 ENERGY_SCALE = 10000                      # raw = kWh x 10000
+# Measured on a JSY-MK-194G: a written counter is stored in steps of 0.01 kWh
+# (raw value truncated to a multiple of 100), although it then counts and
+# reads back in steps of 0.001 kWh.
+ENERGY_WRITE_STEP_RAW = 100
+ENERGY_WRITE_STEP_KWH = ENERGY_WRITE_STEP_RAW / ENERGY_SCALE   # 0.01 kWh
 ENERGY_MAX_KWH = 0xFFFFFFFF / ENERGY_SCALE  # 429496.7295 kWh
 
 # --------------------------------------------------------------------------- #

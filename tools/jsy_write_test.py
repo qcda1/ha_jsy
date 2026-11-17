@@ -7,7 +7,7 @@ stays silent afterwards. Needs only pyserial. Stop Home Assistant's use of the
 port first (or move the adapter to another machine).
 
     python jsy_write_test.py                       # read-only check
-    python jsy_write_test.py --energy              # rewrite one energy counter
+    python jsy_write_test.py --energy              # one energy counter +0.01 kWh, and back
     python jsy_write_test.py --new-id 11           # ID -> 11, then back
     python jsy_write_test.py --new-baud 9600       # speed -> 9600, then back
     python jsy_write_test.py --energy --new-id 11 --new-baud 9600   # everything
@@ -105,19 +105,26 @@ class Link:
 
 
 def test_energy(link, unit):
-    print("\n== Energy counter: rewrite EnergyNegative1 (004DH) with its own value ==")
+    """Write the counter 0.01 kWh higher, then back.
+
+    The module stores a written counter in steps of 0.01 kWh (raw 100) and
+    keeps counting meanwhile, so the read-back is compared at that step.
+    """
+    print("\n== Energy counter: EnergyNegative1 (004DH) + 0.01 kWh, then back ==")
     raw = link.read_u32(unit, REG_ENERGY_NEG_1)
     if raw is None:
         print("  could not read the measurement block — skipped")
         return
     print(f"  current value: {raw} ({raw / 10000} kWh)")
-    for label, value in (("value + 1", raw + 1), ("original value", raw)):
+    base = raw - raw % 100
+    for label, value in (("value + 0.01 kWh", base + 100), ("original value", base)):
         print(f"  write {label}:")
         link.exchange(link.write_cmd(unit, REG_ENERGY_NEG_1, [value >> 16, value & 0xFFFF]))
         delay = link.silence_after(unit)
         print(f"    answers again after: {'%.2f s' % delay if delay is not None else 'NO ANSWER in 10 s'}")
         back = link.read_u32(unit, REG_ENERGY_NEG_1)
-        print(f"    read back: {back}  ->  {'OK' if back == value else 'DIFFERENT'}")
+        ok = back is not None and 0 <= back - value < 100
+        print(f"    wrote {value}, read back {back}  ->  {'OK' if ok else 'DIFFERENT'}")
 
 
 def change_comm(link, unit, baud, new_unit, new_baud):

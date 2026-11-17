@@ -27,12 +27,14 @@ Everything here is synchronous; callers run it in the executor and get a
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from .const import (
     BAUD_RATE_CODES,
     ENERGY_MAX_KWH,
     ENERGY_SCALE,
+    ENERGY_WRITE_STEP_RAW,
     MAX_DEVICE_ID,
     MIN_DEVICE_ID,
     REG_CLEAR_ALL_ENERGY,
@@ -45,6 +47,11 @@ _LOGGER = logging.getLogger(__name__)
 
 WRITE_TIMEOUT = 2.0
 WRITE_RETRIES = 1
+# The module ignores a frame that follows a write too closely. Measured with
+# raw frames on a JSY-MK-194G: it answers again within 0.2 s, while a request
+# sent right after the acknowledgement gets no answer. Every successful write
+# is therefore followed by this pause, which also spaces consecutive writes.
+POST_WRITE_PAUSE = 0.3
 COMM_WRITE_TIMEOUT = 1.0
 
 # Error codes returned by the module (manual section 4.3)
@@ -94,7 +101,8 @@ def _write(
 
     except Exception as err:  # noqa: BLE001
         error = f"{type(err).__name__}: {err}"
-        # No acknowledgement is the normal outcome of a write to 0004H
+        # "No response" is the normal outcome of an ID change (see
+        # write_comm_settings): not an error.
         level = logging.DEBUG if address == REG_ID_BAUD else logging.ERROR
         _LOGGER.log(level, "%s — write at 0x%04X failed: %s", what, address, error)
         return WriteResult(False, what, values, error)
@@ -105,6 +113,7 @@ def _write(
             except Exception:  # noqa: BLE001
                 pass
 
+    time.sleep(POST_WRITE_PAUSE)
     _LOGGER.info(
         "%s — wrote %s at 0x%04X (ID %s on %s)",
         what, [f"0x{v:04X}" for v in values], address, device_id, port,
@@ -123,7 +132,11 @@ def _u32_words(raw: int) -> list[int]:
 def write_energy(
     port: str, baudrate: int, device_id: int, key: str, kwh: float
 ) -> WriteResult:
-    """Set one energy counter (``key`` from WRITABLE_ENERGY_REGISTERS) in kWh."""
+    """Set one energy counter (``key`` from WRITABLE_ENERGY_REGISTERS) in kWh.
+
+    The module keeps a written value in steps of 0.01 kWh and drops the rest;
+    the value is truncated here the same way so the log shows what is stored.
+    """
     what = f"{key} = {kwh} kWh"
     address = WRITABLE_ENERGY_REGISTERS.get(key)
     if address is None:
@@ -133,6 +146,8 @@ def write_energy(
             False, what, [], f"value out of range 0..{ENERGY_MAX_KWH} kWh"
         )
     raw = round(kwh * ENERGY_SCALE)
+    raw -= raw % ENERGY_WRITE_STEP_RAW
+    what = f"{key} = {raw / ENERGY_SCALE} kWh"
     return _write(port, baudrate, device_id, address, _u32_words(raw), what)
 
 
@@ -178,12 +193,18 @@ def write_comm_settings(
     ``baudrate`` / ``device_id`` are the CURRENT settings, used to reach the
     module. The new settings apply at once.
 
-    Observed on a JSY-MK-194G: the module does NOT acknowledge this write with
-    its old ID, so ``success`` is normally False here even though the change
-    took place. Callers must not rely on the result: they probe the module
-    with the new settings instead. The frame is sent once (no retry) with a
-    short timeout, since a second copy would be addressed to an ID that no
-    longer exists.
+    Measured on a JSY-MK-194G with raw frames:
+      * the module acknowledges at the OLD baud rate, then switches speed;
+      * when the ID changes, the acknowledgement carries the NEW ID
+        (tx ``0A 10 00 04 ...`` -> rx ``63 10 00 04 00 01 ...``). pymodbus
+        discards a reply from another ID and reports "no response", so
+        ``success`` is False after an ID change even though it took place;
+      * the module answers with its new settings about 0.2 s later.
+
+    Callers must therefore not rely on the result: they probe the module with
+    the new settings instead. The frame is sent once (no retry) with a short
+    timeout, since a second copy would be addressed to an ID that no longer
+    exists.
     """
     what = f"Modbus ID {device_id} -> {new_device_id}, {baudrate} -> {new_baudrate} baud"
     if not MIN_DEVICE_ID <= new_device_id <= MAX_DEVICE_ID:
